@@ -1,0 +1,23 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  ollama-mcp-server:
+    build: .
+    container_name: ollama-mcp-server
+    depends_on:
+      - ollama
+    environment:
+      PORT: "3000"
+      OLLAMA_BASE_URL: "http://ollama"
+      OLLAMA_MODEL: "gemma2:2b"
+    ports:
+      - "3000:3000"
+
+volumes:
+  ollama-data:
