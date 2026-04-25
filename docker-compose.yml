@@ -14,8 +14,13 @@ services:
       - ollama
     environment:
       PORT: "3000"
-      OLLAMA_BASE_URL: "http://ollama"
+      OLLAMA_BASE_URL: "http://ollama:11434"
       OLLAMA_MODEL: "gemma2:2b"
+      # Cloud Ollama: set OLLAMA_BASE_URL to your remote host and
+      # OLLAMA_API_KEY to the bearer token. Remove the `depends_on`
+      # block and the local `ollama` service when using a cloud instance.
+      # OLLAMA_BASE_URL: "https://your-cloud-ollama-host"
+      # OLLAMA_API_KEY: ""
     ports:
       - "3000:3000"
 

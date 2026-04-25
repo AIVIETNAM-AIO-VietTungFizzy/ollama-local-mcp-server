@@ -8,6 +8,12 @@ import { z } from "zod";
 const PORT = Number(process.env.PORT ?? 3000);
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://ollama:11434";
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? "";
+
+/** Returns Authorization header when an API key is configured (cloud Ollama). */
+function getAuthHeaders(): Record<string, string> {
+  return OLLAMA_API_KEY ? { Authorization: `Bearer ${OLLAMA_API_KEY}` } : {};
+}
 
 type OllamaMessage = {
   role: "system" | "user" | "assistant";
@@ -42,6 +48,7 @@ async function callOllamaChat(options: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
     body: JSON.stringify({
       model: options.model,
@@ -67,7 +74,9 @@ async function callOllamaChat(options: {
 }
 
 async function listOllamaModels(): Promise<string[]> {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+  const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+    headers: { ...getAuthHeaders() },
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -91,7 +100,8 @@ function createMcpServer(): McpServer {
     {
       description: "Ask an Ollama model running in another Docker container",
       inputSchema: {
-        prompt: z.string().describe("The prompt to send to Ollama"),
+        query: z.string().optional().describe("The prompt to send to Ollama"),
+        prompt: z.string().optional().describe("Alias for query"),
         model: z
           .string()
           .optional()
@@ -104,8 +114,21 @@ function createMcpServer(): McpServer {
           .describe("Optional system instruction for the model"),
       },
     },
-    async ({ prompt, model, system }) => {
+    async ({ query, prompt, model, system }) => {
+      const text = query ?? prompt ?? "";
       const selectedModel = model ?? DEFAULT_OLLAMA_MODEL;
+
+      // Heartbeat: return alive response without calling Ollama
+      if (!text.trim()) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Ollama MCP server is alive and ready.",
+            },
+          ],
+        };
+      }
 
       try {
         const messages: OllamaMessage[] = [];
@@ -119,10 +142,10 @@ function createMcpServer(): McpServer {
 
         messages.push({
           role: "user",
-          content: prompt,
+          content: text,
         });
 
-        const text = await callOllamaChat({
+        const reply = await callOllamaChat({
           model: selectedModel,
           messages,
         });
@@ -131,7 +154,7 @@ function createMcpServer(): McpServer {
           content: [
             {
               type: "text",
-              text,
+              text: reply,
             },
           ],
         };
@@ -277,6 +300,7 @@ app.get("/health", (_req: Request, res: Response) => {
     ok: true,
     ollamaBaseUrl: OLLAMA_BASE_URL,
     defaultModel: DEFAULT_OLLAMA_MODEL,
+    cloudMode: !!OLLAMA_API_KEY,
   });
 });
 
@@ -284,4 +308,5 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`Ollama HTTP MCP server listening on port ${PORT}`);
   console.log(`Ollama base URL: ${OLLAMA_BASE_URL}`);
   console.log(`Default Ollama model: ${DEFAULT_OLLAMA_MODEL}`);
+  console.log(`Cloud mode: ${OLLAMA_API_KEY ? "enabled (API key set)" : "disabled (local)"}`);
 });

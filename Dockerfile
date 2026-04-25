@@ -15,7 +15,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV OLLAMA_BASE_URL=http://ollama
+ENV OLLAMA_BASE_URL=http://ollama:11434
 ENV OLLAMA_MODEL=gemma2:2v
 
 COPY package*.json ./

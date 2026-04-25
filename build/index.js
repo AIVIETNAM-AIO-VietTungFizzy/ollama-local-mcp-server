@@ -46,7 +46,8 @@ function createMcpServer() {
     server.registerTool("ask_ollama", {
         description: "Ask an Ollama model running in another Docker container",
         inputSchema: {
-            prompt: z.string().describe("The prompt to send to Ollama"),
+            query: z.string().optional().describe("The prompt to send to Ollama"),
+            prompt: z.string().optional().describe("Alias for query"),
             model: z
                 .string()
                 .optional()
@@ -56,8 +57,20 @@ function createMcpServer() {
                 .optional()
                 .describe("Optional system instruction for the model"),
         },
-    }, async ({ prompt, model, system }) => {
+    }, async ({ query, prompt, model, system }) => {
+        const text = query ?? prompt ?? "";
         const selectedModel = model ?? DEFAULT_OLLAMA_MODEL;
+        // Heartbeat: return alive response without calling Ollama
+        if (!text.trim()) {
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: "Ollama MCP server is alive and ready.",
+                    },
+                ],
+            };
+        }
         try {
             const messages = [];
             if (system) {
@@ -68,9 +81,9 @@ function createMcpServer() {
             }
             messages.push({
                 role: "user",
-                content: prompt,
+                content: text,
             });
-            const text = await callOllamaChat({
+            const reply = await callOllamaChat({
                 model: selectedModel,
                 messages,
             });
@@ -78,7 +91,7 @@ function createMcpServer() {
                 content: [
                     {
                         type: "text",
-                        text,
+                        text: reply,
                     },
                 ],
             };
