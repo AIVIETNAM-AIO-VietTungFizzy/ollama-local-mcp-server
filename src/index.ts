@@ -1,5 +1,6 @@
 import express, { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
+import { Ollama } from "ollama";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -10,83 +11,34 @@ const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://ollama:11434";
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? "";
 
-/** Returns Authorization header when an API key is configured (cloud Ollama). */
-function getAuthHeaders(): Record<string, string> {
-  return OLLAMA_API_KEY ? { Authorization: `Bearer ${OLLAMA_API_KEY}` } : {};
-}
+const ollamaClient = new Ollama({
+  host: OLLAMA_BASE_URL,
+  ...(OLLAMA_API_KEY
+    ? { headers: { Authorization: `Bearer ${OLLAMA_API_KEY}` } }
+    : {}),
+});
 
 type OllamaMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-type OllamaChatResponse = {
-  model: string;
-  created_at: string;
-  message?: {
-    role: string;
-    content: string;
-  };
-  done: boolean;
-  error?: string;
-};
-
-type OllamaTagsResponse = {
-  models: Array<{
-    name: string;
-    model?: string;
-    modified_at?: string;
-    size?: number;
-  }>;
-};
-
 async function callOllamaChat(options: {
   model: string;
   messages: OllamaMessage[];
 }): Promise<string> {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      stream: false,
-    }),
+  const response = await ollamaClient.chat({
+    model: options.model,
+    messages: options.messages,
+    stream: false,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Ollama /api/chat failed with ${response.status}: ${errorText}`,
-    );
-  }
-
-  const data = (await response.json()) as OllamaChatResponse;
-
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  return data.message?.content ?? "";
+  return response.message.content;
 }
 
 async function listOllamaModels(): Promise<string[]> {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
-    headers: { ...getAuthHeaders() },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Ollama /api/tags failed with ${response.status}: ${errorText}`,
-    );
-  }
-
-  const data = (await response.json()) as OllamaTagsResponse;
-  return data.models.map((model) => model.name);
+  const response = await ollamaClient.list();
+  return response.models.map((m) => m.name);
 }
 
 function createMcpServer(): McpServer {
